@@ -1,0 +1,14 @@
+mds:
+  contexts:
+    - name: mds-proxy-1
+      port: 8889
+      heartbeatIntervalInMs: 55000
+      version: 5.0
+      handshakeStrategy: ACCEPT
+server:
+  port: 9999
+spring:
+  security:
+    user:
+      name: admin
+      password: admin
