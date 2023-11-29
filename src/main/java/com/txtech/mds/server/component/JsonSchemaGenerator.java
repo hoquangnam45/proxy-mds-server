@@ -14,13 +14,23 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Component
 public class JsonSchemaGenerator {
     private static final Set<String> IGNORED_FIELDS = new HashSet<String>() {{
+        // This field will be set automatically by side effects from executing setKeys() method, so this field does not
+        // need to be set manually
         add("mvKey");
+        // This field is a list of byte array, since protobuf doesn't support multidimensional arrays
+        // generate a proto type that support this type is problematic, a suggestion is to update this field to use
+        // a wrapped type around the primitive array, for now this field will be ignored
+        add("mvNewsLines");
     }};
     private final SchemaVersion schemaVersion = SchemaVersion.DRAFT_2020_12;
+    private final Map<String, SchemaKeyword> toSchemaKeywords;
+    private final Map<SchemaKeyword, String> fromSchemaKeywords;
     private final SchemaGenerator schemaGenerator;
 
     @Autowired
@@ -45,25 +55,30 @@ public class JsonSchemaGenerator {
                 });
         builder.forFields().withIgnoreCheck(field -> {
             Field f = field.getRawMember();
-            // Do not include final or static fields in the schema
-            if (Modifier.isFinal(f.getModifiers()) || Modifier.isStatic(f.getModifiers())) {
+            // Do not include static fields in the schema
+            if (Modifier.isStatic(f.getModifiers())) {
                 return true;
             }
             Class<? extends MsgBaseMessage> cl = (Class<? extends MsgBaseMessage>) field.getDeclaringType().getErasedType();
             if (MsgBaseMessage.class.isAssignableFrom(cl)) {
-                // Ignore abstract MsgBaseMessage class from schema as this should be not be set manually, but instead automatically generated
-                if (Modifier.isAbstract(cl.getModifiers())) {
+                // Ignore MsgBaseMessage class from schema as this should be not be set manually, but instead automatically generated
+                if (MsgBaseMessage.class.equals(cl)) {
                     return true;
                 }
 
-                // Ignore certain well-known field from schema as this should be set by side effects
-                if (IGNORED_FIELDS.contains(f.getName())) {
-                    return true;
-                }
+                // Ignore certain well-known field from schema as this should be set by side effects, or field that needed to be updated
+                // to a different type that is easier to works with
+                return IGNORED_FIELDS.contains(f.getName());
+            } else {
+                return false;
             }
-
-            return false;
         });
+        this.fromSchemaKeywords = Stream.of(SchemaKeyword.values()).collect(Collectors.toMap(
+                k -> k,
+                k -> k.forVersion(schemaVersion)));
+        this.toSchemaKeywords = fromSchemaKeywords.entrySet().stream().collect(Collectors.toMap(
+                Map.Entry::getValue,
+                Map.Entry::getKey));
         this.schemaGenerator = new SchemaGenerator(builder.build());
     }
 
@@ -76,6 +91,10 @@ public class JsonSchemaGenerator {
     }
 
     public String toString(SchemaKeyword keyword) {
-        return keyword.forVersion(schemaVersion);
+        return fromSchemaKeywords.get(keyword);
+    }
+
+    public SchemaKeyword fromString(String keyword) {
+        return toSchemaKeywords.get(keyword);
     }
 }

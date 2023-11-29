@@ -1,28 +1,22 @@
 package com.txtech.mds.server.component;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.txtech.mds.msg.type.MsgBaseMessage;
+import com.txtech.mds.server.pojo.IPublisher;
 import com.txtech.mds.server.pojo.MdsContext;
-import com.txtech.mds.server.pojo.MdsMessageContainer;
-import com.txtech.mds.server.proxy.IHandshaker;
-import com.txtech.mds.server.util.MdsAttributes;
+import com.txtech.mds.server.proxy.ProxyMdsHandshaker;
 import lombok.Getter;
 
-import java.io.*;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.net.ServerSocket;
 import java.util.*;
 
 @Getter
-public class MdsServerSocketController {
+public class MdsServerSocketController implements IPublisher<MsgBaseMessage> {
     private final ServerSocket serverSocket;
     private final Set<MdsSocketController> activeClients = Collections.synchronizedSet(new HashSet<>());
     private final JsonSchemaGenerator schemaGenerator;
     private final MdsContext mdsContext;
-    private final Map<String, Map<String, JsonNode>> jsonSchemas;
+    private final Map<String, Map<String, ObjectNode>> jsonSchemas;
     private final String version;
     private Thread listenThread;
     private boolean stop = false;
@@ -37,7 +31,7 @@ public class MdsServerSocketController {
         this.serverSocket = serverSocket;
         this.mdsContext = mdsContext;
         this.schemaGenerator = schemaGenerator;
-        this.jsonSchemas = mdsContext.getSchemas();
+        this.jsonSchemas = mdsContext.getJsonSchemas();
     }
 
     public void stop() throws Exception {
@@ -62,7 +56,7 @@ public class MdsServerSocketController {
         }
         if (!started) {
             started = true;
-            IHandshaker<MsgBaseMessage> handshaker = mdsContext.getHandshaker();
+            ProxyMdsHandshaker handshaker = mdsContext.getHandshaker();
             this.listenThread = new Thread(() -> {
                 while (!stop) {
                     try {
@@ -108,17 +102,8 @@ public class MdsServerSocketController {
         }
     }
 
-    public void publish(String schemaName, String subSchemaName, JsonNode data) throws IOException, InvocationTargetException, IllegalAccessException, NoSuchMethodException, NoSuchFieldException {
-        Class<? extends MsgBaseMessage> schemaClass = mdsContext.getSchemaClasses().get(schemaName).get(subSchemaName);
-        ObjectMapper objectMapper = mdsContext.getObjectMapper();
-        MdsMessageContainer<?> msgContainer = objectMapper.convertValue(data, objectMapper.getTypeFactory().constructParametricType(MdsMessageContainer.class, schemaClass));
-
-        // Run default side-effects
-        Method setKeyMethod = msgContainer.getMessage().getClass().getDeclaredMethod("setKey");
-        setKeyMethod.setAccessible(true);
-        setKeyMethod.invoke(msgContainer.getMessage());
-
-        msgContainer.getMessage().setImageType(MdsAttributes.buildMsgImageType(msgContainer.getAttributes()));
-        activeClients.forEach(client -> client.addToSendingQueue(msgContainer.getMessage()));
+    @Override
+    public void publish(MsgBaseMessage payload) throws Exception {
+        activeClients.forEach(client -> client.addToSendingQueue(payload));
     }
 }

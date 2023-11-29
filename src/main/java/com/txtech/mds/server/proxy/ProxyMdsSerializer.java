@@ -6,10 +6,12 @@ import com.txtech.mds.msg.MsgImageType;
 import com.txtech.mds.msg.MsgObjectClassManager;
 import com.txtech.mds.msg.type.MsgBaseMessage;
 import com.txtech.mds.msg.type.MsgMdsAttribute;
+import lombok.Getter;
 
 import java.nio.ByteBuffer;
 
-public class ProxyMdsSerializer implements ISerializer<ByteBuffer, MsgBaseMessage> {
+public class ProxyMdsSerializer {
+    @Getter
     private final String name;
     private final MsgMdsDecoder decoder;
     private final MsgMdsEncoder encoder;
@@ -28,27 +30,18 @@ public class ProxyMdsSerializer implements ISerializer<ByteBuffer, MsgBaseMessag
         this.encoder = new MsgMdsEncoder();
     }
 
-    @Override
-    public String getName() {
-        return name;
-    }
-
-    @Override
     public MsgBaseMessage decode(ByteBuffer rawValue) throws Exception {
         return decoder.decode(rawValue);
     }
 
-    @Override
     public ByteBuffer encode(MsgBaseMessage value) throws Exception {
         return encoder.encode(new MsgMdsAttribute(MsgMdsAttribute.SourceType.Upstream, value.getImageType()), value);
     }
 
-    @Override
     public Class<ByteBuffer> getEncodedClass() {
         return ByteBuffer.class;
     }
 
-    @Override
     public Class<MsgBaseMessage> getDecodedClass() {
         return MsgBaseMessage.class;
     }
