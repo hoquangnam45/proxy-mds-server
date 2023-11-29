@@ -6,8 +6,7 @@ import com.txtech.mds.msg.type.general.MsgHandShake;
 
 import java.util.Optional;
 
-public class ProxyMdsHandshaker implements IHandshaker<MsgBaseMessage> {
-    @Override
+public class ProxyMdsHandshaker {
     public MsgHandShake handshaking(String version) {
         return Optional.of(new MsgHandShake())
                 .map(msg -> {
@@ -18,7 +17,6 @@ public class ProxyMdsHandshaker implements IHandshaker<MsgBaseMessage> {
                 }).orElseThrow(() -> new IllegalStateException("Not possible to enter here"));
     }
 
-    @Override
     public MsgHandShake accept() {
         return Optional.of(new MsgHandShake())
                 .map(msg -> {
@@ -26,7 +24,6 @@ public class ProxyMdsHandshaker implements IHandshaker<MsgBaseMessage> {
                     return msg;
                 }).orElseThrow(() -> new IllegalStateException("Not possible to enter here"));    }
 
-    @Override
     public MsgHandShake timeout() {
         return Optional.of(new MsgHandShake())
                 .map(msg -> {
@@ -35,7 +32,6 @@ public class ProxyMdsHandshaker implements IHandshaker<MsgBaseMessage> {
                 }).orElseThrow(() -> new IllegalStateException("Not possible to enter here"));
     }
 
-    @Override
     public MsgHandShake incorrectVersion() {
         return Optional.of(new MsgHandShake())
                 .map(msg -> {
@@ -44,7 +40,6 @@ public class ProxyMdsHandshaker implements IHandshaker<MsgBaseMessage> {
                 }).orElseThrow(() -> new IllegalStateException("Not possible to enter here"));
     }
 
-    @Override
     public MsgHandShake denied() {
         return Optional.of(new MsgHandShake())
                 .map(msg -> {

@@ -1,28 +1,30 @@
 package com.txtech.mds.server.pojo;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.protobuf.Descriptors;
 import com.txtech.mds.msg.type.MsgBaseMessage;
 import com.txtech.mds.server.constant.HandshakeStrategy;
-import com.txtech.mds.server.proxy.IHandshaker;
-import com.txtech.mds.server.proxy.IHeartbeater;
-import com.txtech.mds.server.proxy.ISerializer;
+import com.txtech.mds.server.proxy.ProxyMdsHandshaker;
+import com.txtech.mds.server.proxy.ProxyMdsHeartbeater;
+import com.txtech.mds.server.proxy.ProxyMdsSerializer;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-import java.nio.ByteBuffer;
 import java.util.Map;
 
 @RequiredArgsConstructor
 @Getter
-public class MdsContext implements IContext<ByteBuffer, MsgBaseMessage> {
+public class MdsContext {
     private final String name;
-    private final ISerializer<ByteBuffer, MsgBaseMessage> serializer;
+    private final ProxyMdsSerializer serializer;
     private final Map<String, Map<String, Class<? extends MsgBaseMessage>>> schemaClasses;
     private final HandshakeStrategy handshakeStrategy;
-    private final IHandshaker<MsgBaseMessage> handshaker;
-    private final IHeartbeater<MsgBaseMessage> heartbeater;
-    private final Map<String, Map<String, JsonNode>> schemas;
+    private final ProxyMdsHandshaker handshaker;
+    private final ProxyMdsHeartbeater heartbeater;
+    private final Map<String, Map<String, ObjectNode>> jsonSchemas;
+    private final Map<String, Descriptors.FileDescriptor> serviceFileDescriptors;
     private final MdsContextConfig config;
     private final ObjectMapper objectMapper;
+    private final Map<String, GrpcService> grpcServices;
 }

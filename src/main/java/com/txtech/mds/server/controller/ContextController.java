@@ -1,15 +1,19 @@
 package com.txtech.mds.server.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.txtech.mds.msg.type.MsgBaseMessage;
+import com.txtech.mds.server.component.JsonMdsPublisher;
 import com.txtech.mds.server.component.MdsContextHolder;
 import com.txtech.mds.server.pojo.GenericResponse;
+import com.txtech.mds.server.pojo.IPublisher;
+import com.txtech.mds.server.pojo.MdsContext;
+import com.txtech.mds.server.pojo.MdsPayload;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.util.Map;
 
 @RestController
@@ -22,34 +26,37 @@ public class ContextController {
         this.mdsContextHolder = mdsContextHolder;
     }
 
-    @PostMapping("{contextName}/publish/{schemaName}/{subSchemaName}")
+    @PostMapping("{contextName}/publish/{interfaceClass}/{implementedClass}")
     public ResponseEntity<GenericResponse> publishToContext(
             HttpServletRequest request,
-            @PathVariable("schemaName") String schemaName,
-            @PathVariable("subSchemaName") String subSchemaName,
+            @PathVariable("interfaceClass") String interfaceClass,
+            @PathVariable("implementedClass") String implementedClass,
             @PathVariable("contextName") String contextName,
-            @RequestBody JsonNode data) throws IOException, InvocationTargetException, IllegalAccessException, NoSuchMethodException, NoSuchFieldException {
-        mdsContextHolder.getSocketControllers().get(contextName).publish(schemaName, subSchemaName, data);
+            @RequestBody JsonNode data) throws Exception {
+        MdsContext mdsContext = mdsContextHolder.getSocketControllers().get(contextName).getMdsContext();
+        IPublisher<MsgBaseMessage> delegatePublisher = mdsContextHolder.getSocketControllers().get(contextName);
+        new JsonMdsPublisher(mdsContext.getSchemaClasses(), mdsContext.getObjectMapper(), delegatePublisher)
+                .publish(new MdsPayload<>(interfaceClass, implementedClass, data));
         return ResponseEntity.ok(new GenericResponse(200, request.getServletPath(), "Publish successfully"));
     }
 
     @GetMapping("{contextName}/schemas")
-    public ResponseEntity<Map<String, Map<String, JsonNode>>> getSchemas(@PathVariable("contextName") String contextName) {
-        return ResponseEntity.ok(mdsContextHolder.getContexts().get(contextName).getSchemas());
+    public ResponseEntity<Map<String, Map<String, ObjectNode>>> getSchemas(@PathVariable("contextName") String contextName) {
+        return ResponseEntity.ok(mdsContextHolder.getContexts().get(contextName).getJsonSchemas());
     }
 
-    @GetMapping("{contextName}/schemas/{schemaName}")
-    public ResponseEntity<Map<String, JsonNode>> getSchema(
-            @PathVariable("schemaName") String schemaName,
+    @GetMapping("{contextName}/schemas/{interfaceClass}")
+    public ResponseEntity<Map<String, ObjectNode>> getSchema(
+            @PathVariable("interfaceClass") String interfaceClass,
             @PathVariable("contextName") String contextName) {
-        return ResponseEntity.ok(mdsContextHolder.getContexts().get(contextName).getSchemas().get(schemaName));
+        return ResponseEntity.ok(mdsContextHolder.getContexts().get(contextName).getJsonSchemas().get(interfaceClass));
     }
 
-    @GetMapping("{contextName}/schemas/{schemaName}/{subSchemaName}")
+    @GetMapping("{contextName}/schemas/{interfaceClass}/{implementedClass}")
     public ResponseEntity<JsonNode> getSchema(
-            @PathVariable("schemaName") String schemaName,
-            @PathVariable("subSchemaName") String subSchemaName,
+            @PathVariable("interfaceClass") String interfaceClass,
+            @PathVariable("implementedClass") String implementedClass,
             @PathVariable("contextName") String contextName) {
-        return ResponseEntity.ok(mdsContextHolder.getContexts().get(contextName).getSchemas().get(schemaName).get(subSchemaName));
+        return ResponseEntity.ok(mdsContextHolder.getContexts().get(contextName).getJsonSchemas().get(interfaceClass).get(implementedClass));
     }
 }

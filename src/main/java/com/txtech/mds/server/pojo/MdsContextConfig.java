@@ -13,4 +13,5 @@ public class MdsContextConfig {
     private Integer heartbeatIntervalInMs;
     private String version;
     private HandshakeStrategy handshakeStrategy;
+    private ProtoConfig proto;
 }
