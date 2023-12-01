@@ -5,7 +5,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ProtoConfig {
+public class GrpcConfig {
     private int port;
     private String outputProtoDir;
 }

@@ -5,7 +5,7 @@ mds:
       heartbeatIntervalInMs: 55000
       version: 5.0
       handshakeStrategy: ACCEPT
-      proto:
+      grpc:
         outputProtoDir: ./protos/mds-proxy-1/
         port: 8889
 server:

@@ -20,7 +20,7 @@ import com.txtech.mds.server.pojo.MdsContextConfig;
 import com.txtech.mds.server.pojo.MdsMessageContainer;
 import com.txtech.mds.server.pojo.MdsPayload;
 import com.txtech.mds.server.pojo.MethodHandler;
-import com.txtech.mds.server.pojo.ProtoConfig;
+import com.txtech.mds.server.pojo.GrpcConfig;
 import com.txtech.mds.server.proxy.ProxyMdsHandshaker;
 import com.txtech.mds.server.proxy.ProxyMdsHeartbeater;
 import com.txtech.mds.server.proxy.ProxyMdsSerializer;
@@ -85,8 +85,8 @@ public class MdsContextHolder {
 
         // Clean-up outputProtoDir
         for (File outputProtoDir : toIterable(allowedContexts.values().stream()
-                .map(MdsContextConfig::getProto)
-                .map(ProtoConfig::getOutputProtoDir)
+                .map(MdsContextConfig::getGrpc)
+                .map(GrpcConfig::getOutputProtoDir)
                 .map(File::new)
                 .filter(File::exists)
                 .filter(File::canWrite))) {
@@ -201,7 +201,7 @@ public class MdsContextHolder {
                         Map.Entry::getKey,
                         entry -> {
                             String interfaceClass = entry.getKey();
-                            File servicesOutputDir = new File(Paths.get(context.getProto().getOutputProtoDir()).normalize().toFile(), "services");
+                            File servicesOutputDir = new File(Paths.get(context.getGrpc().getOutputProtoDir()).normalize().toFile(), "services");
                             File serviceOutputDir = new File(servicesOutputDir, interfaceClass);
                             File protoOutputDir = new File(serviceOutputDir, "proto");
                             File typesOutputDir = new File(protoOutputDir, "types");
@@ -390,7 +390,7 @@ public class MdsContextHolder {
                 ))
         ));
         MdsGrpcDynamicServices mdsGrpcDynamicServices = new MdsGrpcDynamicServices(
-                mdsContext.getConfig().getProto().getPort(),
+                mdsContext.getConfig().getGrpc().getPort(),
                 mdsContext.getGrpcServices(),
                 mdsContext.getServiceFileDescriptors(),
                 methodHandlers);
