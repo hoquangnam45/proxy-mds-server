@@ -1,7 +1,6 @@
 package com.txtech.mds.server.proxy;
 
 import com.txtech.mds.msg.element.MsgElementConnectResponse;
-import com.txtech.mds.msg.type.MsgBaseMessage;
 import com.txtech.mds.msg.type.general.MsgHandShake;
 
 import java.util.Optional;
@@ -22,7 +21,8 @@ public class ProxyMdsHandshaker {
                 .map(msg -> {
                     msg.setResponse(MsgElementConnectResponse.Accepted);
                     return msg;
-                }).orElseThrow(() -> new IllegalStateException("Not possible to enter here"));    }
+                }).orElseThrow(() -> new IllegalStateException("Not possible to enter here"));
+    }
 
     public MsgHandShake timeout() {
         return Optional.of(new MsgHandShake())
@@ -45,5 +45,6 @@ public class ProxyMdsHandshaker {
                 .map(msg -> {
                     msg.setResponse(MsgElementConnectResponse.Denied);
                     return msg;
-                }).orElseThrow(() -> new IllegalStateException("Not possible to enter here"));    }
+                }).orElseThrow(() -> new IllegalStateException("Not possible to enter here"));
+    }
 }

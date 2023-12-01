@@ -37,12 +37,4 @@ public class ProxyMdsSerializer {
     public ByteBuffer encode(MsgBaseMessage value) throws Exception {
         return encoder.encode(new MsgMdsAttribute(MsgMdsAttribute.SourceType.Upstream, value.getImageType()), value);
     }
-
-    public Class<ByteBuffer> getEncodedClass() {
-        return ByteBuffer.class;
-    }
-
-    public Class<MsgBaseMessage> getDecodedClass() {
-        return MsgBaseMessage.class;
-    }
 }

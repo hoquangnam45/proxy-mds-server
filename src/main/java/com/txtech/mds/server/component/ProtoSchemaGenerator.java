@@ -50,20 +50,24 @@ public class ProtoSchemaGenerator {
                             if (entry.getValue().isEnum()) {
                                 int[] idx = new int[]{0};
                                 // Why wrapped enum inside message type
-                                // Protobuf doesn't allow same name enum value to be defined even if that come from 2
-                                // different enum also if the enum name happened to be the same as any type in proto
-                                // file (message type for example) collision will also happen
+                                // Protobuf doesn't allow same name enum to be defined even if that come from 2
+                                // different enum type also if the enum name happened to be the same as any type in proto
+                                // file (message type name is the same as enum value name for example),
+                                // collision will also happen. That's why to avoid name collision enum is wrapped
+                                // in the message type
+                                // Reference: https://stackoverflow.com/questions/68134072/different-enums-same-value-in-protobuf
                                 return new AbstractMap.SimpleEntry<>(entry.getKey(), MessageFormat.format(
                                         "message {0} '{'\n    enum {0} '{'\n{1}\n    '}'\n'}'",
                                         normalizeProtoTypeName(entry.getKey()),
                                         String.join(
                                                 "\n",
                                                 // Why need an unset value for enum, because starting enum value must be
-                                                // 0, but in protobuf zero index enum carries the semantic that this enum value is unknown, unfortunately
-                                                // if we print proto message that have field using first enum value, it will be ignored/skipped
-                                                // one way to work around this is to create an explicit unknown enum value at 0 index
-                                                // so that our actual first enum value start at 1 to make sure that when print
+                                                // 0, unfortunately if we print proto message that have field using first enum value at 0 index,
+                                                // it will be ignored/skipped because protobuf don't have a way to distinguish default value and
+                                                // not being set. One way to work around this is to create an explicit unknown enum value at 0
+                                                // index so that our actual first enum value start at 1 to make sure that when serialize
                                                 // to json it will not ignore the enum value
+                                                // Reference: https://stackoverflow.com/questions/71206859/handling-enum-value-0-in-protobuf-c
                                                 "        UNSET = 0;",
                                                 StreamUtils.streamArrayNode((ArrayNode) definitions.get(entry.getKey()).get(jsonSchemaGenerator.toString(SchemaKeyword.TAG_ENUM)))
                                                         .map(JsonNode::asText)
