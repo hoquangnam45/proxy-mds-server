@@ -1,6 +1,7 @@
 package com.txtech.mds.server.component;
 
 import com.txtech.mds.msg.type.MsgBaseMessage;
+import com.txtech.mds.server.pojo.ConsumerEx;
 import com.txtech.mds.server.pojo.MdsContext;
 import lombok.Getter;
 
@@ -25,7 +26,13 @@ public class MdsSocketController implements AutoCloseable {
     private final Thread receivingThread;
     private final Object sendingLock = new Object();
 
+    private boolean stop;
+    private boolean start;
+    private ConsumerEx<MdsSocketController> onStop;
+
     public MdsSocketController(Socket socket, MdsContext mdsContext) {
+        this.stop = false;
+        this.start = false;
         this.socket = socket;
         this.mdsContext = mdsContext;
         this.receivingBuffer = ByteBuffer.allocateDirect(DEFAULT_MAX_RECEIVING_QUEUE_BUFFER_SIZE);
@@ -33,62 +40,72 @@ public class MdsSocketController implements AutoCloseable {
         this.receivingQueue = new ArrayBlockingQueue<>(DEFAULT_MAX_RECEIVING_QUEUE_SIZE);
         this.sendingQueue = new ArrayBlockingQueue<>(DEFAULT_MAX_SENDING_QUEUE_SIZE);
         this.sendingThread = new Thread(() -> {
-            while (true) {
-                try {
+            try {
+                while (!stop) {
                     synchronized(sendingLock) {
-                        if (!socket.isClosed() && socket.isConnected()) {
-                            if (sendingQueue.isEmpty()) {
-                                sendingQueue.add(mdsContext.getHeartbeater().heartbeat());
-                            }
-                            while (!sendingQueue.isEmpty()) {
-                                sendSynchronous(sendingQueue.poll());
-                            }
+                        if (sendingQueue.isEmpty()) {
+                            sendingQueue.add(mdsContext.getHeartbeater().heartbeat());
+                        }
+                        while (!sendingQueue.isEmpty()) {
+                            sendSynchronous(sendingQueue.poll());
                         }
                         sendingLock.wait(mdsContext.getConfig().getHeartbeatIntervalInMs());
                     }
-                } catch (Exception e) {
-                    try {
-                        stop();
-                    } catch (Exception ex) {
-                        throw new RuntimeException(ex);
-                    }
-                    throw new RuntimeException(e);
                 }
+            } catch (Exception e) {
+                try {
+                    stop();
+                } catch (Exception ex) {
+                    throw new RuntimeException(ex);
+                }
+                throw new RuntimeException(e);
             }
         });
         this.receivingThread = new Thread(() -> {
-            while (true) {
-                try {
-                    if (!socket.isClosed() && socket.isConnected()) {
-                        readResponse(socket);
-                        receivingBuffer.flip();
-                        Optional.ofNullable(mdsContext.getSerializer().decode(receivingBuffer))
-                                .ifPresent(this::addToReceivingQueue);
-                        receivingBuffer.compact();
-                    }
-                } catch (Exception e) {
-                    try {
-                        stop();
-                    } catch (Exception ex) {
-                        throw new RuntimeException(ex);
-                    }
-                    throw new RuntimeException(e);
+            try {
+                while (!stop) {
+                    readResponse(socket);
+                    receivingBuffer.flip();
+                    Optional.ofNullable(mdsContext.getSerializer().decode(receivingBuffer))
+                            .ifPresent(this::addToReceivingQueue);
+                    receivingBuffer.compact();
                 }
+            } catch (Exception e) {
+                try {
+                    stop();
+                } catch (Exception ex) {
+                    throw new RuntimeException(ex);
+                }
+                throw new RuntimeException(e);
             }
         });
     }
 
     public void start() {
+        if (start) {
+            throw new IllegalStateException("This socket has been started, restarted is not allowed");
+        }
+        this.start = true;
         this.sendingThread.start();
         this.receivingThread.start();
     }
 
+    public void registerOnStop(ConsumerEx<MdsSocketController> onStop) {
+        this.onStop = onStop;
+    }
+
     public void sendSynchronous(MsgBaseMessage message) throws Exception {
+        if (stop || isStopped()) {
+            throw new IllegalStateException("Socket has stopped");
+        }
         message.setMessageTime(System.nanoTime());
         writeToSocket(socket, mdsContext.getSerializer().encode(message));
     }
 
     public MsgBaseMessage receiveSynchronous() throws Exception {
+        if (stop || isStopped()) {
+            throw new IllegalStateException("Socket has stopped");
+        }
         readResponse(socket);
         receivingBuffer.flip();
         MsgBaseMessage ret = mdsContext.getSerializer().decode(receivingBuffer);
@@ -97,6 +114,9 @@ public class MdsSocketController implements AutoCloseable {
     }
 
     public void addToSendingQueue(MsgBaseMessage message) {
+        if (stop || isStopped()) {
+            throw new IllegalStateException("Socket has stopped");
+        }
         synchronized (sendingLock) {
             this.sendingQueue.add(message);
             sendingLock.notify();
@@ -108,9 +128,6 @@ public class MdsSocketController implements AutoCloseable {
     }
 
     private void writeToSocket(Socket socket, ByteBuffer buffer) throws IOException {
-        if (socket.isClosed() || !socket.isConnected()) {
-            return;
-        }
         OutputStream os = socket.getOutputStream();
         BufferedOutputStream bos = new BufferedOutputStream(os);
         byte[] rawBytes = new byte[buffer.remaining()];
@@ -134,12 +151,18 @@ public class MdsSocketController implements AutoCloseable {
         return receivingThread.isInterrupted() && sendingThread.isInterrupted() && !socket.isConnected() && !socket.isClosed();
     }
 
-    public void stop() throws Exception {
+    public synchronized void stop() throws Exception {
         close();
     }
 
     @Override
-    public void close() throws Exception {
+    public synchronized void close() throws Exception {
+        if (stop && isStopped()) {
+            return;
+        }
+        if (onStop != null) {
+            onStop.accept(this);
+        }
         if (!socket.isClosed()) {
             socket.close();
         }
@@ -152,5 +175,6 @@ public class MdsSocketController implements AutoCloseable {
         if (!receivingThread.isInterrupted()) {
             receivingThread.interrupt();
         }
+        stop = true;
     }
 }

@@ -64,15 +64,16 @@ public class MdsServerSocketController implements IPublisher<MsgBaseMessage> {
                         switch (mdsContext.getHandshakeStrategy()) {
                             case HANDSHAKING: {
                                 client.sendSynchronous(handshaker.handshaking(version));
-                                MsgBaseMessage resp = client.receiveSynchronous();
-                                client.start();
                                 activeClients.add(client);
+                                client.registerOnStop(activeClients::remove);
+                                client.start();
                                 break;
                             }
                             case ACCEPT: {
                                 client.sendSynchronous(handshaker.accept());
-                                client.start();
                                 activeClients.add(client);
+                                client.registerOnStop(activeClients::remove);
+                                client.start();
                                 break;
                             }
                             case DENIED: {
