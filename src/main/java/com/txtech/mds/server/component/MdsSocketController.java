@@ -136,11 +136,16 @@ public class MdsSocketController implements AutoCloseable {
         bos.flush();
     }
 
-    private void readResponse(Socket socket) throws Exception {
+    private synchronized void readResponse(Socket socket) throws Exception {
         InputStream is = socket.getInputStream();
         BufferedInputStream bis = new BufferedInputStream(is);
         while (bis.available() == 0) {
-            Thread.sleep(1);
+            try {
+                wait(1);
+            } catch (InterruptedException e) {
+                // Reference: https://stackoverflow.com/questions/35474536/wait-is-always-throwing-interruptedexception
+                /* perfectly normal for thread wait to have this exception */
+            }
         }
         while(bis.available() > 0) {
             receivingBuffer.put((byte) bis.read());
@@ -160,20 +165,20 @@ public class MdsSocketController implements AutoCloseable {
         if (stop && isStopped()) {
             return;
         }
-        if (onStop != null) {
-            onStop.accept(this);
+        while (!sendingThread.isInterrupted()) {
+            sendingThread.interrupt();
         }
-        if (!socket.isClosed()) {
+        while (!receivingThread.isInterrupted()) {
+            receivingThread.interrupt();
+        }
+        while (!socket.isClosed()) {
             socket.close();
         }
         receivingBuffer.clear();
         sendingQueue.clear();
         receivingQueue.clear();
-        if (!sendingThread.isInterrupted()) {
-            sendingThread.interrupt();
-        }
-        if (!receivingThread.isInterrupted()) {
-            receivingThread.interrupt();
+        if (onStop != null) {
+            onStop.accept(this);
         }
         stop = true;
     }

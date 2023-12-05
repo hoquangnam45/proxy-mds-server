@@ -8,6 +8,7 @@ import com.txtech.mds.server.proxy.ProxyMdsHandshaker;
 import lombok.Getter;
 
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.*;
 
 @Getter
@@ -60,7 +61,9 @@ public class MdsServerSocketController implements IPublisher<MsgBaseMessage> {
             this.listenThread = new Thread(() -> {
                 while (!stop) {
                     try {
-                        MdsSocketController client = new MdsSocketController(serverSocket.accept(), mdsContext);
+                        Socket socket = serverSocket.accept();
+                        socket.setKeepAlive(true);
+                        MdsSocketController client = new MdsSocketController(socket, mdsContext);
                         switch (mdsContext.getHandshakeStrategy()) {
                             case HANDSHAKING: {
                                 client.sendSynchronous(handshaker.handshaking(version));
