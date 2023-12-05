@@ -4,32 +4,40 @@ This tool is intended to help you test the behavior of your mds client during de
 ## How to use this tool?
 
 1. Setting up environment
-
    - Protoc compiler
     ```bash
     sudo apt install protobuf-compiler
     ```
-   
    - Grpc client: [warthog](https://github.com/Forest33/warthog) or any [grpc clients](https://github.com/grpc-ecosystem/awesome-grpc#tools) of your liking
+   - [*Download the tool*](https://gitlab.tx-tech.com/internal-vn-tool/release-builder/-/package_files/26/download)
 
-2. Install lombok plugins to your eclipse or intellij
+2. Run the mds server
+    ```bash
+    java -jar <path-to-jar>
+    ```
+    **NOTE:** The proxy mds server will use the latter config:
+   - Rest port: 8080
+   - Grpc port: 8889
+   - Mds server port: 8888
 
-   - **IntelliJ**: Settings > Plugins > Marketplace > Search lombok then install
-   - **Eclipse**: Help menu > Install new software > Add https://projectlombok.org/p2 > Install the Lombok plugin and restart Eclipse.
-   - **Eclipse (snap)**: 
-     - Copy eclipse.ini to your snap eclipse home folder
-     ```bash
-     cp /snap/eclipse/current/eclipse.ini ~/snap/eclipse/current/eclipse.ini
-     ```
-      - Add this line to your eclipse.ini then restart eclipse 
-     ```text
-     -javaagent:<path-to-your-lombok.jar>
+3. **(Optional)** if you want to run this as source
+   - Setup lombok
+      - **IntelliJ**: Settings > Plugins > Marketplace > Search lombok then install
+      - **Eclipse**: Help menu > Install new software > Add https://projectlombok.org/p2 > Install the Lombok plugin and restart Eclipse.
+      - **Eclipse (snap)**: 
+      - Copy eclipse.ini to your snap eclipse home folder
+      ```bash
+      cp /snap/eclipse/current/eclipse.ini ~/snap/eclipse/current/eclipse.ini
       ```
-     - Verify if lombok is installed successfully in _Help > About Eclipse IDE_ 
+       - Add this line to your eclipse.ini then restart eclipse 
+      ```text
+      -javaagent:<path-to-your-lombok.jar>
+       ```
+      - Verify if lombok is installed successfully in _Help > About Eclipse IDE_ 
 
-     ![eclipse_lombok.png](images%2Feclipse_lombok.png)
+      ![eclipse_lombok.png](images%2Feclipse_lombok.png)
 
-3. Start your mds proxy server using eclipse or intellij
+   - After set up lombok you can start your mds proxy server using eclipse or intellij
 
 4. Start your mds client
 
@@ -53,7 +61,26 @@ This tool has 3 ports that is defined in the application.yml.
 - **mds.contexts[].port**: Mds proxy server port
 - **mds.contexts[].grpc.port**: Port for grpc client
 
-If you want to change any of these ports from default settings, you can change the value defined in application.yml
+If you run this tool as a standalone jar, you can provide your own config.yml. Below is a template config.
+```yaml
+mds:
+  contexts:
+    - name: mds-proxy-1
+      port: 8888
+      heartbeatIntervalInMs: 55000
+      version: 5.0
+      handshakeStrategy: ACCEPT
+      grpc:
+        outputProtoDir: ./protos/mds-proxy-1/
+        port: 8889
+server:
+  port: 9999
+```
+
+To use your config start it like this
+```bash
+java -jar <path-to-tool-jar> --spring.config.location=<path-to-your-config.yml>
+```
 
 ### How do I make it to include new services or new message class?
 
@@ -66,6 +93,28 @@ The schema for the mds messages are generated automatically from MDSMessage, to 
 ![mds_message.png](images%2Fmds_message.png)
 
 For more convenient generation of mds messages, you can add both mds api and mds message project to your mds proxy server workspace so that everytime you make change, it will use latest change automatically. 
+
+If you want to test new services and types with standalone jar, provide your own config with **overrideMdsPackages** defined in the context, like this:
+```yaml
+mds:
+  contexts:
+    - name: mds-proxy-1
+      port: 8888
+      heartbeatIntervalInMs: 55000
+      version: 5.0
+      handshakeStrategy: ACCEPT
+      grpc:
+        outputProtoDir: ./protos/mds-proxy-1/
+        port: 8889
+      overrideMdsPackages:
+        - <path-to-mds-message-jar>
+        - <path-to-mds-api-jar>
+        - <path-to-mds-message-classes-folder>
+        - <path-to-mds-api-classes-folder>
+server:
+  port: 9999
+```
+but please **discourage** from doing this way, as this is a workaround to quickly testing, using your pom file and rebuild the project is recommended over doing it like this
 
 ## How it works under-the-hood?
 

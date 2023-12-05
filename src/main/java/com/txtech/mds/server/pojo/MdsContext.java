@@ -3,7 +3,6 @@ package com.txtech.mds.server.pojo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.Descriptors;
-import com.txtech.mds.msg.type.MsgBaseMessage;
 import com.txtech.mds.server.constant.HandshakeStrategy;
 import com.txtech.mds.server.proxy.ProxyMdsHandshaker;
 import com.txtech.mds.server.proxy.ProxyMdsHeartbeater;
@@ -18,7 +17,7 @@ import java.util.Map;
 public class MdsContext {
     private final String name;
     private final ProxyMdsSerializer serializer;
-    private final Map<String, Map<String, Class<? extends MsgBaseMessage>>> schemaClasses;
+    private final Map<String, Map<String, Class<?>>> schemaClasses;
     private final HandshakeStrategy handshakeStrategy;
     private final ProxyMdsHandshaker handshaker;
     private final ProxyMdsHeartbeater heartbeater;

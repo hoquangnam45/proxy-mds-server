@@ -7,8 +7,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class ClassLoaders {
-    public static Set<Class<?>> findAllClassesUsingClassLoader(String packageName) throws IOException {
-        return ClassPath.from(ClassLoader.getSystemClassLoader()).getAllClasses().stream()
+    public static Set<Class<?>> findAllClassesUsingClassLoader(ClassLoader classLoader, String packageName) throws IOException {
+        return ClassPath.from(classLoader).getAllClasses().stream()
                 .filter(clazz -> clazz.getPackageName().startsWith(packageName))
                 .map(ClassPath.ClassInfo::load)
                 .collect(Collectors.toSet());

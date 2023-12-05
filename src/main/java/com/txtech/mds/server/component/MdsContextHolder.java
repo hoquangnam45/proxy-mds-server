@@ -10,8 +10,8 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Message;
 import com.google.protobuf.util.JsonFormat;
 import com.txtech.mds.api.listener.MdsMarketDataListenerInterface;
-import com.txtech.mds.msg.type.MsgBaseMessage;
 import com.txtech.mds.server.config.MdsConfigProperties;
+import com.txtech.mds.server.pojo.GrpcConfig;
 import com.txtech.mds.server.pojo.GrpcMethod;
 import com.txtech.mds.server.pojo.GrpcService;
 import com.txtech.mds.server.pojo.IPublisher;
@@ -20,7 +20,6 @@ import com.txtech.mds.server.pojo.MdsContextConfig;
 import com.txtech.mds.server.pojo.MdsMessageContainer;
 import com.txtech.mds.server.pojo.MdsPayload;
 import com.txtech.mds.server.pojo.MethodHandler;
-import com.txtech.mds.server.pojo.GrpcConfig;
 import com.txtech.mds.server.proxy.ProxyMdsHandshaker;
 import com.txtech.mds.server.proxy.ProxyMdsHeartbeater;
 import com.txtech.mds.server.proxy.ProxyMdsSerializer;
@@ -44,12 +43,14 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
+import java.net.MalformedURLException;
 import java.net.ServerSocket;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
@@ -98,110 +99,139 @@ public class MdsContextHolder {
         this.jsonSchemaGenerator = jsonSchemaGenerator;
         this.protoSchemaGenerator = protoSchemaGenerator;
         this.socketControllers = new Hashtable<>();
+        this.contexts = new Hashtable<>();
 
-        // build map: interface -> implemented class -> class object
-        Map<Class<?>, Set<Class<?>>> messageTypes = ClassLoaders.findAllClassesUsingClassLoader(MESSAGE_TYPES_PACKAGE)
-                .stream()
-                .filter(c -> {
-                    int modifiers = c.getModifiers();
-                    return !Modifier.isAbstract(modifiers) && !Modifier.isInterface(modifiers) && MsgBaseMessage.class.isAssignableFrom(c);
-                }).collect(Collectors.toMap(
-                        it -> it,
-                        it -> new HashSet<>(ClassUtils.getAllInterfaces(it))));
-        Set<Class<?>> listenerTypes = Stream.of(MdsMarketDataListenerInterface.class.getDeclaredMethods())
-                .filter(m -> m.getParameterCount() == 1)
-                .filter(m -> m.getReturnType().equals(Void.TYPE))
-                .filter(m -> !Modifier.isStatic(m.getModifiers()))
-                .map(m -> m.getParameterTypes()[0])
-                .collect(Collectors.toSet());
-        Map<Class<?>, Set<Class<? extends MsgBaseMessage>>> implementedClasses = messageTypes.entrySet().stream()
-                .flatMap(e -> e.getValue().stream()
-                        .filter(listenerTypes::contains)
-                        .map(interfaceClass -> new AbstractMap.SimpleEntry<>(interfaceClass, e.getKey())))
-                .collect(Collectors.groupingBy(
-                        AbstractMap.SimpleEntry::getKey,
-                        Collectors.mapping(it -> (Class<? extends MsgBaseMessage>) it.getValue(), Collectors.toSet())));
-        if (implementedClasses.size() != listenerTypes.size()) {
-            listenerTypes.stream()
-                    .filter(type -> !implementedClasses.containsKey(type))
-                    .map(type -> MessageFormat.format("Interface {0} used in receiver method of class {1}, but no implementation class for interface can be found", type.getName(), MdsMarketDataListenerInterface.class.getCanonicalName()))
-                    .forEach(logger::warn);
+        // Build class loaders: context -> class loader
+        Map<String, ClassLoader> classLoaderMap = new HashMap<>();
+        for (MdsContextConfig contextConfig : mdsConfig.getContexts()) {
+            ClassLoader cl = contextConfig.getOverrideMdsPackages() != null ? new URLClassLoader(contextConfig.getOverrideMdsPackages().stream()
+                    .map(File::new)
+                    .map(File::toURI)
+                    .map(uri -> {
+                        try {
+                            return uri.toURL();
+                        } catch (MalformedURLException e) {
+                            throw new RuntimeException(e);
+                        }
+                    })
+                    .toArray(URL[]::new), this.getClass().getClassLoader()) : this.getClass().getClassLoader();
+            classLoaderMap.put(contextConfig.getName(), cl);
         }
-        Map<String, Map<String, Class<? extends MsgBaseMessage>>> schemaClasses = implementedClasses.entrySet().stream().collect(Collectors.toMap(
-                e -> e.getKey().getName(),
-                e -> e.getValue().stream().collect(Collectors.toMap(
-                        Class::getName,
-                        cl -> cl))));
 
-        // Build json schema map: interface -> implemented class -> schema
-        Map<String, Map<String, ObjectNode>> jsonSchemas = schemaClasses.entrySet().stream().collect(Collectors.toMap(
-                Map.Entry::getKey,
-                entry -> entry.getValue().entrySet().stream().collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        innerEntry -> (ObjectNode) jsonSchemaGenerator.getSchema(MdsMessageContainer.class, innerEntry.getValue())))));
+        classLoaderMap.forEach((contextName, contextCl) -> {
+            try {
+                Class<?> msgBaseMessageClazz = contextCl.loadClass("com.txtech.mds.msg.type.MsgBaseMessage");
+                // Build map: class -> interface class
+                Map<Class<?>, Set<Class<?>>> messageTypes = ClassLoaders.findAllClassesUsingClassLoader(contextCl, MESSAGE_TYPES_PACKAGE)
+                        .stream()
+                        .filter(c -> {
+                            int modifiers = c.getModifiers();
+                            return !Modifier.isAbstract(modifiers) && !Modifier.isInterface(modifiers) && msgBaseMessageClazz.isAssignableFrom(c);
+                        }).collect(Collectors.toMap(
+                                it -> it,
+                                it -> new HashSet<>(ClassUtils.getAllInterfaces(it))));
+                Class<?> listenerInterfaceClazz = contextCl.loadClass("com.txtech.mds.api.listener.MdsMarketDataListenerInterface");
+                Set<Class<?>> listenerTypes = Stream.of(listenerInterfaceClazz.getDeclaredMethods())
+                        .filter(m -> m.getParameterCount() == 1)
+                        .filter(m -> m.getReturnType().equals(Void.TYPE))
+                        .filter(m -> !Modifier.isStatic(m.getModifiers()))
+                        .map(m -> m.getParameterTypes()[0])
+                        .collect(Collectors.toSet());
 
-        // Build proto type map: interface -> implemented class -> (entryType, scope/package, schemas)
-        Map<String, Map<String, Triple<String, String, Map<String, String>>>> protoImplementedTypeSchemas = jsonSchemas.entrySet().stream()
-                .collect(Collectors.toMap(
+                // build map: interface -> implemented classes
+                Map<Class<?>, Set<Class<?>>> implementedClasses = messageTypes.entrySet().stream()
+                        .flatMap(e -> e.getValue().stream()
+                                .filter(listenerTypes::contains)
+                                .map(interfaceClass -> new AbstractMap.SimpleEntry<>(interfaceClass, e.getKey())))
+                        .collect(Collectors.groupingBy(
+                                AbstractMap.SimpleEntry::getKey,
+                                Collectors.mapping(it -> (Class<?>) it.getValue(), Collectors.toSet())));
+                if (implementedClasses.size() != listenerTypes.size()) {
+                    listenerTypes.stream()
+                            .filter(type -> !implementedClasses.containsKey(type))
+                            .map(type -> MessageFormat.format("Interface {0} used in receiver method of class {1}, but no implementation class for interface can be found", type.getName(), MdsMarketDataListenerInterface.class.getCanonicalName()))
+                            .forEach(logger::warn);
+                }
+
+                // build map: interface class name -> implemented class name -> implemented class
+                Map<String, Map<String, Class<?>>> schemaClasses = implementedClasses.entrySet().stream().collect(Collectors.toMap(
+                        e -> e.getKey().getName(),
+                        e -> e.getValue().stream().collect(Collectors.toMap(
+                                Class::getName,
+                                cl -> cl))));
+
+                // Build json schema map: interface -> implemented class -> schema
+                Map<String, Map<String, ObjectNode>> jsonSchemas = schemaClasses.entrySet().stream().collect(Collectors.toMap(
                         Map.Entry::getKey,
                         entry -> entry.getValue().entrySet().stream().collect(Collectors.toMap(
                                 Map.Entry::getKey,
-                                innerEntry -> {
-                                    try {
-                                        ObjectNode definitionNode = (ObjectNode) innerEntry.getValue().get(jsonSchemaGenerator.toString(SchemaKeyword.TAG_DEFINITIONS));
-                                        Map<String, ObjectNode> definitions = StreamUtils.streamObjectNode(definitionNode).collect(Collectors.toMap(
-                                                Map.Entry::getKey,
-                                                iinnerEntry -> (ObjectNode) iinnerEntry.getValue(),
-                                                (prev, next) -> {
-                                                    throw new IllegalStateException("Json schema should not have duplicated definition");
-                                                },
-                                                LinkedHashMap::new
-                                        ));
-                                        String implementedClass = innerEntry.getKey();
-                                        String scope = implementedClass;
-                                        String entryType = "MdsMessageContainer";
-                                        definitions.put(entryType, innerEntry.getValue());
-                                        return Triple.of(entryType, scope, protoSchemaGenerator.generateTypeSchema(definitions));
-                                    } catch (InvalidProtocolBufferException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                }))));
+                                innerEntry -> (ObjectNode) jsonSchemaGenerator.getSchema(MdsMessageContainer.class, innerEntry.getValue())))));
 
-        // Build proto service map: interface -> service
-        Map<String, GrpcService> grpcServices = protoImplementedTypeSchemas.entrySet().stream().collect(Collectors.toMap(
-                Map.Entry::getKey,
-                entry -> {
-                    String interfaceClass = entry.getKey();
-                    GrpcService grpcService = new GrpcService(getProtoServiceName(interfaceClass), new ArrayList<>());
-                    entry.getValue().entrySet().stream()
-                            .map(innerEntry -> {
-                                String implementedClass = innerEntry.getKey();
-                                String scope = innerEntry.getValue().getMiddle();
-                                String entryType = innerEntry.getValue().getLeft();
-                                return new GrpcMethod(
-                                        getPublishProtoMethodName(implementedClass),
-                                        scope + "." + entryType,
-                                        "google.protobuf.Empty",
-                                        Pair.of(interfaceClass, implementedClass));
-                            })
-                            .forEach(grpcService.getMethods()::add);
-                    return grpcService;
-                }
-        ));
-        Map<String, String> protoServiceSchemas = grpcServices.entrySet().stream().collect(Collectors.toMap(
-                Map.Entry::getKey,
-                entry -> protoSchemaGenerator.generateProtoService(entry.getValue())));
+                // Build proto type map: interface -> implemented class -> (entryType, scope/package, schemas)
+                Map<String, Map<String, Triple<String, String, Map<String, String>>>> protoImplementedTypeSchemas = jsonSchemas.entrySet().stream()
+                        .collect(Collectors.toMap(
+                                Map.Entry::getKey,
+                                entry -> entry.getValue().entrySet().stream().collect(Collectors.toMap(
+                                        Map.Entry::getKey,
+                                        innerEntry -> {
+                                            try {
+                                                ObjectNode definitionNode = (ObjectNode) innerEntry.getValue().get(jsonSchemaGenerator.toString(SchemaKeyword.TAG_DEFINITIONS));
+                                                Map<String, ObjectNode> definitions = StreamUtils.streamObjectNode(definitionNode).collect(Collectors.toMap(
+                                                        Map.Entry::getKey,
+                                                        iinnerEntry -> (ObjectNode) iinnerEntry.getValue(),
+                                                        (prev, next) -> {
+                                                            throw new IllegalStateException("Json schema should not have duplicated definition");
+                                                        },
+                                                        LinkedHashMap::new
+                                                ));
+                                                String implementedClass = innerEntry.getKey();
+                                                String scope = implementedClass;
+                                                String entryType = "MdsMessageContainer";
+                                                definitions.put(entryType, innerEntry.getValue());
+                                                return Triple.of(entryType, scope, protoSchemaGenerator.generateTypeSchema(definitions));
+                                            } catch (InvalidProtocolBufferException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        })
+                                )
+                        )
+                );
 
-        // Write proto to output proto dir
-        // Create proto type and service in output proto directory
-        // contextName -> interface -> (serviceProtoFile, serviceDescriptorFile, map: implemented class -> typeProtoFile)
-        Map<String, Map<String, Triple<File, File, Map<String, File>>>> outputProtoDirMap = allowedContexts.values().stream().collect(Collectors.toMap(
-                MdsContextConfig::getName,
-                context -> protoImplementedTypeSchemas.entrySet().stream().collect(Collectors.toMap(
+                // Build proto service map: interface -> service
+                Map<String, GrpcService> grpcServices = protoImplementedTypeSchemas.entrySet().stream().collect(Collectors.toMap(
                         Map.Entry::getKey,
                         entry -> {
                             String interfaceClass = entry.getKey();
-                            File servicesOutputDir = new File(Paths.get(context.getGrpc().getOutputProtoDir()).normalize().toFile(), "services");
+                            GrpcService grpcService = new GrpcService(getProtoServiceName(interfaceClass), new ArrayList<>());
+                            entry.getValue().entrySet().stream()
+                                    .map(innerEntry -> {
+                                        String implementedClass = innerEntry.getKey();
+                                        String scope = innerEntry.getValue().getMiddle();
+                                        String entryType = innerEntry.getValue().getLeft();
+                                        return new GrpcMethod(
+                                                getPublishProtoMethodName(implementedClass),
+                                                scope + "." + entryType,
+                                                "google.protobuf.Empty",
+                                                Pair.of(interfaceClass, implementedClass));
+                                    })
+                                    .forEach(grpcService.getMethods()::add);
+                            return grpcService;
+                        }
+                ));
+
+                Map<String, String> protoServiceSchemas = grpcServices.entrySet().stream().collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> protoSchemaGenerator.generateProtoService(entry.getValue())));
+
+                MdsContextConfig contextConfig = allowedContexts.get(contextName);
+                // Write proto to output proto dir
+                // Create proto type and service in output proto directory
+                // interface -> (serviceProtoFile, serviceDescriptorFile, map: implemented class -> typeProtoFile)
+                Map<String, Triple<File, File, Map<String, File>>> outputProtoDirMap = protoImplementedTypeSchemas.entrySet().stream().collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> {
+                            String interfaceClass = entry.getKey();
+                            File servicesOutputDir = new File(Paths.get(contextConfig.getGrpc().getOutputProtoDir()).normalize().toFile(), "services");
                             File serviceOutputDir = new File(servicesOutputDir, interfaceClass);
                             File protoOutputDir = new File(serviceOutputDir, "proto");
                             File typesOutputDir = new File(protoOutputDir, "types");
@@ -231,108 +261,91 @@ public class MdsContextHolder {
                                 throw new RuntimeException(e);
                             }
                         }
-                ))
-        ));
+                ));
 
-        outputProtoDirMap.forEach((contextName, entry) -> entry.forEach((interfaceClass, innerEntry) -> {
-            File protoServiceOutputFile = innerEntry.getLeft();
-            try {
-                List<String> importPaths = new ArrayList<>();
-                for (Map.Entry<String, File> protoImplementedClassTypeEntry : innerEntry.getRight().entrySet()) {
-                    File protoImplementedClassType = protoImplementedClassTypeEntry.getValue();
-                    String implementedClass = protoImplementedClassTypeEntry.getKey();
-                    String scope = protoImplementedTypeSchemas
-                            .get(interfaceClass)
-                            .get(implementedClass)
-                            .getMiddle();
-                    try (FileWriter fw = new FileWriter(protoImplementedClassType);
-                         BufferedWriter bw = new BufferedWriter(fw)) {
-                        bw.write(String.join("\n\n",
-                                "syntax = \"proto3\";",
-                                MessageFormat.format("package {0};", scope),
-                                String.join("\n",
-                                        "import public \"google/protobuf/empty.proto\";",
-                                        "import public \"google/protobuf/any.proto\";"),
-                                String.join("\n\n", protoImplementedTypeSchemas
-                                        .get(interfaceClass)
-                                        .get(implementedClass)
-                                        .getRight()
-                                        .values()))
-                        );
-                    }
-                    importPaths.add(protoServiceOutputFile.toPath().getParent().relativize(protoImplementedClassType.toPath()).toString());
-                }
-
-                try (FileWriter fw = new FileWriter(protoServiceOutputFile);
-                     BufferedWriter bw = new BufferedWriter(fw)) {
-                    bw.write(String.join("\n\n",
-                            "syntax = \"proto3\";",
-                            importPaths.stream().map(path -> MessageFormat.format("import \"{0}\";", path)).collect(Collectors.joining("\n")),
-                            protoServiceSchemas.get(interfaceClass)));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }));
-
-        // Compile proto file to proto descriptor file using proto runner
-        for (Triple<File, File, Map<String, File>> triple : toIterable(outputProtoDirMap.values().stream()
-                .map(Map::values)
-                .flatMap(Collection::stream))) {
-            File serviceProtoFile = triple.getLeft();
-            File serviceDescriptorFile = triple.getMiddle();
-            if (new ProtoRunner(serviceDescriptorFile, serviceProtoFile).run() != 0) {
-                logger.error("Proto runner failed to process proto file " + serviceProtoFile);
-            }
-        }
-
-        // Load descriptor file and build map: contextName -> interface -> service file descriptor
-        Map<String, Map<String, Descriptors.FileDescriptor>> serviceFileDescriptors = outputProtoDirMap.entrySet().stream().collect(Collectors.toMap(
-                Map.Entry::getKey,
-                entry -> entry.getValue().entrySet().stream().collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        innerEntry -> {
-                            File serviceDescriptorFile = innerEntry.getValue().getMiddle();
-                            File serviceProtoFile = innerEntry.getValue().getLeft();
-                            try (FileInputStream fis = new FileInputStream(serviceDescriptorFile);
-                                 BufferedInputStream bis = new BufferedInputStream(fis)) {
-                                DescriptorProtos.FileDescriptorSet fileDescriptorSet = DescriptorProtos.FileDescriptorSet.parseFrom(bis);
-                                return FileDescriptors.buildFrom(fileDescriptorSet, serviceProtoFile.getName());
-                            } catch (IOException | Descriptors.DescriptorValidationException e) {
-                                throw new RuntimeException(e);
+                outputProtoDirMap.forEach((interfaceClass, innerEntry) -> {
+                    File protoServiceOutputFile = innerEntry.getLeft();
+                    try {
+                        List<String> importPaths = new ArrayList<>();
+                        for (Map.Entry<String, File> protoImplementedClassTypeEntry : innerEntry.getRight().entrySet()) {
+                            File protoImplementedClassType = protoImplementedClassTypeEntry.getValue();
+                            String implementedClass = protoImplementedClassTypeEntry.getKey();
+                            String scope = protoImplementedTypeSchemas
+                                    .get(interfaceClass)
+                                    .get(implementedClass)
+                                    .getMiddle();
+                            try (FileWriter fw = new FileWriter(protoImplementedClassType);
+                                 BufferedWriter bw = new BufferedWriter(fw)) {
+                                bw.write(String.join("\n\n",
+                                        "syntax = \"proto3\";",
+                                        MessageFormat.format("package {0};", scope),
+                                        String.join("\n",
+                                                "import public \"google/protobuf/empty.proto\";",
+                                                "import public \"google/protobuf/any.proto\";"),
+                                        String.join("\n\n", protoImplementedTypeSchemas
+                                                .get(interfaceClass)
+                                                .get(implementedClass)
+                                                .getRight()
+                                                .values()))
+                                );
                             }
+                            importPaths.add(protoServiceOutputFile.toPath().getParent().relativize(protoImplementedClassType.toPath()).toString());
                         }
 
-                ))
-        ));
+                        try (FileWriter fw = new FileWriter(protoServiceOutputFile);
+                             BufferedWriter bw = new BufferedWriter(fw)) {
+                            bw.write(String.join("\n\n",
+                                    "syntax = \"proto3\";",
+                                    importPaths.stream().map(path -> MessageFormat.format("import \"{0}\";", path)).collect(Collectors.joining("\n")),
+                                    protoServiceSchemas.get(interfaceClass)));
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
 
-        this.contexts = allowedContexts.entrySet().stream().map(entry -> {
-            String contextName = entry.getKey();
-            MdsContextConfig config = entry.getValue();
-            return new MdsContext(
-                    contextName,
-                    new ProxyMdsSerializer(contextName),
-                    schemaClasses,
-                    config.getHandshakeStrategy(),
-                    new ProxyMdsHandshaker(),
-                    new ProxyMdsHeartbeater(),
-                    jsonSchemas,
-                    serviceFileDescriptors.get(contextName),
-                    config,
-                    objectMapper,
-                    grpcServices);
-        }).collect(Collectors.toMap(
-                MdsContext::getName,
-                context -> context,
-                (prev, next) -> {
-                    throw new IllegalStateException("Duplicated context name");
-                },
-                Hashtable::new));
+                // Compile proto file to proto descriptor file using proto runner
+                for (Triple<File, File, Map<String, File>> triple :outputProtoDirMap.values()) {
+                    File serviceProtoFile = triple.getLeft();
+                    File serviceDescriptorFile = triple.getMiddle();
+                    if (new ProtoRunner(serviceDescriptorFile, serviceProtoFile).run() != 0) {
+                        logger.error("Proto runner failed to process proto file " + serviceProtoFile);
+                    }
+                }
 
-        ///////////////////////////////////////////////////////////////
-        for (Map.Entry<String, MdsContext> entry : contexts.entrySet()) {
-            startContext(entry.getValue());
-        }
+                // Load descriptor file and build map: interface -> service file descriptor
+                Map<String, Descriptors.FileDescriptor> serviceFileDescriptors = outputProtoDirMap.entrySet().stream().collect(Collectors.toMap(
+                    Map.Entry::getKey,
+                    entry -> {
+                        File serviceDescriptorFile = entry.getValue().getMiddle();
+                        File serviceProtoFile = entry.getValue().getLeft();
+                        try (FileInputStream fis = new FileInputStream(serviceDescriptorFile);
+                             BufferedInputStream bis = new BufferedInputStream(fis)) {
+                            DescriptorProtos.FileDescriptorSet fileDescriptorSet = DescriptorProtos.FileDescriptorSet.parseFrom(bis);
+                            return FileDescriptors.buildFrom(fileDescriptorSet, serviceProtoFile.getName());
+                        } catch (IOException | Descriptors.DescriptorValidationException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                ));
+
+                ///////////////////////////////////////////////////////////////
+                startContext(contexts.computeIfAbsent(contextName, k -> new MdsContext(
+                        contextName,
+                        new ProxyMdsSerializer(contextName),
+                        schemaClasses,
+                        contextConfig.getHandshakeStrategy(),
+                        new ProxyMdsHandshaker(),
+                        new ProxyMdsHeartbeater(),
+                        jsonSchemas,
+                        serviceFileDescriptors,
+                        contextConfig,
+                        objectMapper,
+                        grpcServices)));
+            } catch (IOException | ClassNotFoundException | InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     private String getProtoServiceName(String interfaceClass) {

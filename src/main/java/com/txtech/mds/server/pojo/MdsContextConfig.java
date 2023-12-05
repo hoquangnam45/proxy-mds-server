@@ -4,6 +4,8 @@ import com.txtech.mds.server.constant.HandshakeStrategy;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.List;
+
 @Getter
 @Setter
 public class MdsContextConfig {
@@ -13,4 +15,5 @@ public class MdsContextConfig {
     private String version;
     private HandshakeStrategy handshakeStrategy;
     private GrpcConfig grpc;
+    private List<String> overrideMdsPackages;
 }

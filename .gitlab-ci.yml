@@ -1,0 +1,40 @@
+image: maven:3-jdk-11
+
+# Run this only on default branch
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+cache:
+  paths:
+    - .m2/repository/
+
+build-job:
+  stage: build
+  script:
+    - echo "Building build tool..."
+    - mvn clean package $MAVEN_OPTS -DskipTests
+  artifacts:
+    paths:
+      - target/
+
+deploy-job:
+  stage: deploy
+  dependencies:
+    - build-job
+  script:
+    - echo "Deploying build tool..."
+    - echo $CI_JOB_TOKEN
+    - |
+      mvn deploy:deploy-file \
+        $MAVEN_OPTS \
+        -DpomFile=pom.xml \
+        -Dfile=target/ReleaseBuilder-0.0.1-SNAPSHOT-jar-with-dependencies.jar \
+        -Durl=https://gitlab.tx-tech.com/api/v4/projects/372/packages/maven \
+        -DrepositoryId=gitlab-maven \
+        -DgeneratePom=false \
+        -s ci_settings.xml

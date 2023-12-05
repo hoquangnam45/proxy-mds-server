@@ -14,9 +14,9 @@ import java.util.Map;
 public class JsonMdsPublisher implements IPublisher<MdsPayload<JsonNode>> {
     private final ObjectMapper objectMapper;
     private final IPublisher<MsgBaseMessage> delegatePublisher;
-    private final Map<String, Map<String, Class<? extends MsgBaseMessage>>> schemaClasses;
+    private final Map<String, Map<String, Class<?>>> schemaClasses;
 
-    public JsonMdsPublisher(Map<String, Map<String, Class<? extends MsgBaseMessage>>> schemaClasses, ObjectMapper objectMapper, IPublisher<MsgBaseMessage> delegatePublisher) {
+    public JsonMdsPublisher(Map<String, Map<String, Class<?>>> schemaClasses, ObjectMapper objectMapper, IPublisher<MsgBaseMessage> delegatePublisher) {
         this.objectMapper = objectMapper;
         this.delegatePublisher = delegatePublisher;
         this.schemaClasses = schemaClasses;
@@ -27,7 +27,7 @@ public class JsonMdsPublisher implements IPublisher<MdsPayload<JsonNode>> {
         String implementedClass = payload.getImplementedClass();
         String interfaceClass = payload.getInterfaceClass();
         JsonNode jsonData = payload.getPayload();
-        Class<? extends MsgBaseMessage> schemaClass = schemaClasses.get(interfaceClass).get(implementedClass);
+        Class<?> schemaClass = schemaClasses.get(interfaceClass).get(implementedClass);
         MdsMessageContainer<?> msgContainer = objectMapper.convertValue(jsonData, objectMapper.getTypeFactory().constructParametricType(MdsMessageContainer.class, schemaClass));
 
         // Run default side-effects
