@@ -10,13 +10,15 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerServiceDefinition;
 import io.grpc.ServiceDescriptor;
+import io.grpc.Status;
 import io.grpc.protobuf.ProtoFileDescriptorSupplier;
 import io.grpc.protobuf.ProtoUtils;
 import io.grpc.protobuf.services.ProtoReflectionService;
 import io.grpc.stub.ServerCalls;
 import lombok.Getter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,7 +27,7 @@ import java.util.stream.Collectors;
 @Getter
 public class MdsGrpcDynamicServices {
     private final Server server;
-
+    private static final Logger logger = LoggerFactory.getLogger(MdsGrpcDynamicServices.class);
     public MdsGrpcDynamicServices(
             int port,
             Map<String, GrpcService> services,
@@ -64,7 +66,8 @@ public class MdsGrpcDynamicServices {
                                 observer.onNext(methodHandlers.get(service.getServiceName()).get(method.getBareMethodName()).apply(req));
                                 observer.onCompleted();
                             } catch (Throwable e) {
-                                observer.onError(e);
+                                logger.error(e.getMessage(), e);
+                                observer.onError(Status.UNKNOWN.withCause(e).withDescription(e.getMessage()).asRuntimeException());
                             }
                         }));
                     }
