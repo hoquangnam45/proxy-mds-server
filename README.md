@@ -9,14 +9,14 @@ This tool is intended to help you test the behavior of your mds client during de
     sudo apt install protobuf-compiler
     ```
    - Grpc client: [warthog](https://github.com/Forest33/warthog) or any [grpc clients](https://github.com/grpc-ecosystem/awesome-grpc#tools) of your liking
-   - [*Download the tool*](https://gitlab.tx-tech.com/internal-vn-tool/release-builder/-/package_files/26/download)
+   - [*Download the tool*](https://gitlab.tx-tech.com/vn-core/internal-tool/mds2core-testing-tool/-/releases)
 
 2. Run the mds server
     ```bash
     java -jar <path-to-jar>
     ```
     **NOTE:** The proxy mds server will use the latter config:
-   - Rest port: 8080
+   - Rest port: 9999
    - Grpc port: 8889
    - Mds server port: 8888
 
