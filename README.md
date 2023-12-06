@@ -92,29 +92,9 @@ The schema for the mds messages are generated automatically from MDSMessage, to 
 
 ![mds_message.png](images%2Fmds_message.png)
 
-For more convenient generation of mds messages, you can add both mds api and mds message project to your mds proxy server workspace so that everytime you make change, it will use latest change automatically. 
+For more convenient generation of mds messages, you can add both mds api and mds message project to your mds proxy server workspace so that everytime you make change, it will use latest change automatically.
 
-If you want to test new services and types with standalone jar, provide your own config with **overrideMdsPackages** defined in the context, like this:
-```yaml
-mds:
-  contexts:
-    - name: mds-proxy-1
-      port: 8888
-      heartbeatIntervalInMs: 55000
-      version: 5.0
-      handshakeStrategy: ACCEPT
-      grpc:
-        outputProtoDir: ./protos/mds-proxy-1/
-        port: 8889
-      overrideMdsPackages:
-        - <path-to-mds-message-jar>
-        - <path-to-mds-api-jar>
-        - <path-to-mds-message-classes-folder>
-        - <path-to-mds-api-classes-folder>
-server:
-  port: 9999
-```
-but please **discourage** from doing this way, as this is a workaround to quickly testing, using your pom file and rebuild the project is recommended over doing it like this
+After testing, you can build a new package that includes your latest choice of mds service and type.
 
 ## How it works under-the-hood?
 

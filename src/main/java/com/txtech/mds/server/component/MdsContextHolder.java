@@ -27,7 +27,6 @@ import com.txtech.mds.server.util.ClassLoaders;
 import com.txtech.mds.server.util.FileDescriptors;
 import com.txtech.mds.server.util.StreamUtils;
 import lombok.Getter;
-import org.apache.commons.lang3.ClassUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.tomcat.util.http.fileupload.FileUtils;
@@ -35,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.util.ClassUtils;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedWriter;
@@ -43,16 +43,12 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
-import java.net.MalformedURLException;
 import java.net.ServerSocket;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -104,18 +100,11 @@ public class MdsContextHolder {
         // Build class loaders: context -> class loader
         Map<String, ClassLoader> classLoaderMap = new HashMap<>();
         for (MdsContextConfig contextConfig : mdsConfig.getContexts()) {
-            ClassLoader cl = contextConfig.getOverrideMdsPackages() != null ? new URLClassLoader(contextConfig.getOverrideMdsPackages().stream()
-                    .map(File::new)
-                    .map(File::toURI)
-                    .map(uri -> {
-                        try {
-                            return uri.toURL();
-                        } catch (MalformedURLException e) {
-                            throw new RuntimeException(e);
-                        }
-                    })
-                    .toArray(URL[]::new), this.getClass().getClassLoader()) : this.getClass().getClassLoader();
-            classLoaderMap.put(contextConfig.getName(), cl);
+            // Why use this class loader
+            // If using spring boot fat jar then the system class loader can't access to nested jar inside spring
+            // boot executable jar, a recommended approach is to use spring class loader instead by using currentThread::getContextClassLoader
+            // Reference: https://github.com/spring-projects/spring-boot/issues/4375
+            classLoaderMap.put(contextConfig.getName(), Thread.currentThread().getContextClassLoader());
         }
 
         classLoaderMap.forEach((contextName, contextCl) -> {
@@ -129,7 +118,7 @@ public class MdsContextHolder {
                             return !Modifier.isAbstract(modifiers) && !Modifier.isInterface(modifiers) && msgBaseMessageClazz.isAssignableFrom(c);
                         }).collect(Collectors.toMap(
                                 it -> it,
-                                it -> new HashSet<>(ClassUtils.getAllInterfaces(it))));
+                                it -> Stream.of(ClassUtils.getAllInterfacesForClass(it, contextCl)).collect(Collectors.toSet())));
                 Class<?> listenerInterfaceClazz = contextCl.loadClass("com.txtech.mds.api.listener.MdsMarketDataListenerInterface");
                 Set<Class<?>> listenerTypes = Stream.of(listenerInterfaceClazz.getDeclaredMethods())
                         .filter(m -> m.getParameterCount() == 1)

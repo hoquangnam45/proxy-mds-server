@@ -15,5 +15,4 @@ public class MdsContextConfig {
     private String version;
     private HandshakeStrategy handshakeStrategy;
     private GrpcConfig grpc;
-    private List<String> overrideMdsPackages;
 }
