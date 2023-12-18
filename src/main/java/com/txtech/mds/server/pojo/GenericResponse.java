@@ -1,5 +1,6 @@
 package com.txtech.mds.server.pojo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
@@ -9,6 +10,7 @@ public class GenericResponse {
     private final String path;
     private final String msg;
     private final int status;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private final Object details;
     private final LocalDateTime timestamp = LocalDateTime.now();
 

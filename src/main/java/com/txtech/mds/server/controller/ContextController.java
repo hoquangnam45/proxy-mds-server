@@ -59,4 +59,15 @@ public class ContextController {
             @PathVariable("contextName") String contextName) {
         return ResponseEntity.ok(mdsContextHolder.getContexts().get(contextName).getJsonSchemas().get(interfaceClass).get(implementedClass));
     }
+
+    @GetMapping("{contextName}/clients/count")
+    public ResponseEntity<GenericResponse> getClientCount(
+            @PathVariable("contextName") String contextName,
+            HttpServletRequest request) {
+        String path = request.getServletPath();
+        if (mdsContextHolder.getSocketControllers().get(contextName) == null) {
+            return ResponseEntity.status(404).body(new GenericResponse(404, path, "No context name " + contextName));
+        }
+        return ResponseEntity.ok(new GenericResponse(200, path, "" + mdsContextHolder.getSocketControllers().get(contextName).getActiveClients().size()));
+    }
 }

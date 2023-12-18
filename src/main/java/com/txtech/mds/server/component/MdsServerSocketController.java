@@ -6,13 +6,17 @@ import com.txtech.mds.server.pojo.IPublisher;
 import com.txtech.mds.server.pojo.MdsContext;
 import com.txtech.mds.server.proxy.ProxyMdsHandshaker;
 import lombok.Getter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.text.MessageFormat;
 import java.util.*;
 
 @Getter
 public class MdsServerSocketController implements IPublisher<MsgBaseMessage> {
+    private static final Logger logger = LoggerFactory.getLogger(MdsServerSocketController.class);
     private final ServerSocket serverSocket;
     private final Set<MdsSocketController> activeClients = Collections.synchronizedSet(new HashSet<>());
     private final JsonSchemaGenerator schemaGenerator;
@@ -63,6 +67,7 @@ public class MdsServerSocketController implements IPublisher<MsgBaseMessage> {
                     try {
                         Socket socket = serverSocket.accept();
                         socket.setKeepAlive(true);
+                        logger.info(MessageFormat.format("New client connected to mds server at [{0} / {1} / {2}]", mdsContext.getName(), String.valueOf(mdsContext.getConfig().getPort()), mdsContext.getConfig().getHandshakeStrategy()));
                         MdsSocketController client = new MdsSocketController(socket, mdsContext);
                         switch (mdsContext.getHandshakeStrategy()) {
                             case HANDSHAKING: {

@@ -42,6 +42,7 @@ This tool is intended to help you test the behavior of your mds client during de
 4. Start your mds client
 
 5. Using grpc client to connect to mds server
+
 ![grpc_client_set_up_1.png](images%2Fgrpc_client_set_up_1.png)
 ![grpc_client_set_up_2.png](images%2Fgrpc_client_set_up_2.png)
 
@@ -50,6 +51,12 @@ This tool is intended to help you test the behavior of your mds client during de
 ![warthog_client.png](images%2Fwarthog_client.png)
 
 The attributes will be used to generate the mvImageType field for mds message, based on the value set in the attributes it can either route your mds message to the listener or to a different handlers, you can use the default value in the image to route it to mds listener method
+
+## Some useful REST API endpoints that you can use
+
+  - **[GET] /api/context/{contextName}/clients/count**: Get number of active clients connected to proxy mds server
+  - **[GET] /api/context/{contextName}/schemas/{interfaceClass}/{implementedClass}**: Get json schema of a particular message
+  - **[POST] /api/context/{contextName}/publish/{interfaceClass}/{implementedClass}**: Publish a message to proxy mds server which will then push to the connected clients, same as grpc
 
 ## FAQ
 
