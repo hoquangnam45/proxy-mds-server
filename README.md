@@ -103,6 +103,36 @@ For more convenient generation of mds messages, you can add both mds api and mds
 
 After testing, you can build a new package that includes your latest choice of mds service and type.
 
+### What if I want to use non-available mds jar on remote repo?
+
+This project already include a template maven local repository (**./libs**). But by default it will not use this. You could put your local change into this local repository and then repackage the project to include your change. 
+But before that you must set-up your environment to use the local repository. In the pom file already defined a maven repository with the id **custom-mds-repo**.
+
+![local_repo.png](images%2Flocal_repo.png)
+
+If you try to build, it will not use this local repo. Because the provided **settings_hk.xml** reroute all unspecified repo
+to company remote repo. You must exclude the local repo to avoid this, open your **settings_hk.xml** that **USED by maven**, search in the mirrors list for the mirror that have this line 
+
+```xml
+<mirrorOf>*</mirrorOf>
+```
+
+make adjustment to it so it exclude your custom local repo
+
+```xml
+<mirrorOf>!custom-mds-repo,*</mirrorOf>
+```
+the end result should look like this
+
+![setting_modify.png](images%2Fsetting_modify.png)
+
+then add your additional dependency to pom.xml like this
+
+![localRepoChange.png](images%2FlocalRepoChange.png)
+
+Note that your custom dependency should go higher than the non-custom one in pom.xml. 
+After that place your custom lib jar into ./libs folder using standard maven layout structure
+
 ## How it works under-the-hood?
 
 By default, this tool will use the com.txtech.mds.api.listener.MdsMarketDataListenerInterface from MDSAPI project to determined which grpc services need to be generated dynamically by filter for specific listener method signature (void method with 1 argument), the type of the argument will then be collected and then later be used to filter for implementation class as well as generate the service name.
