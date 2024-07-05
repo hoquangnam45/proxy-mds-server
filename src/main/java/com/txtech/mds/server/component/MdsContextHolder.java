@@ -278,7 +278,9 @@ public class MdsContextHolder {
                                                 .values()))
                                 );
                             }
-                            importPaths.add(protoServiceOutputFile.toPath().getParent().relativize(protoImplementedClassType.toPath()).toString());
+
+                            // Fix import path as windows will use backward slash while proto import use forward slash
+                            importPaths.add(protoServiceOutputFile.toPath().getParent().relativize(protoImplementedClassType.toPath()).toString().replace("\\", "/"));
                         }
 
                         try (FileWriter fw = new FileWriter(protoServiceOutputFile);

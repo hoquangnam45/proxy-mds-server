@@ -60,6 +60,10 @@ public class JsonSchemaGenerator {
                 return true;
             }
             Class<? extends MsgBaseMessage> cl = (Class<? extends MsgBaseMessage>) field.getDeclaringType().getErasedType();
+            if (ObjectMapper.class.isAssignableFrom(cl)) {
+                // Do not generate json schema for this type
+                return true;
+            }
             if (MsgBaseMessage.class.isAssignableFrom(cl)) {
                 // Ignore MsgBaseMessage class from schema as this should be not be set manually, but instead automatically generated
                 if (MsgBaseMessage.class.equals(cl)) {
